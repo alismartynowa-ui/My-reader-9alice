@@ -1,5 +1,5 @@
 const CACHE_NAME = 'tap-reader-vgemini-v1';
-const ASSETS = ['./', './index.html', './manifest.json', ./icon-192.png', ./icon-512.png']; // Додайте сюди імена іконок, якщо вони є, наприклад: './icon-192.png'
+const ASSETS = ['./', './index.html', './manifest.json', ./icon-192.png', ./icon-512.png'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
