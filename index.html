@@ -1,0 +1,2077 @@
+
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0" />
+  <meta name="theme-color" content="#0f1522" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>КнигоЧитай — Веб-читалка з перекладом</title>
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- JSZip для розпакування EPUB та FB2.ZIP -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+
+  <!-- Шрифти з підтримкою кирилиці та латиниці (із засічками та без) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Lora:ital,wght@0,400;0,600;1,400&family=Merriweather:ital,wght@0,400;0,700;1,400&family=Open+Sans:ital,wght@0,400;0,600;1,400&family=PT+Serif:ital,wght@0,400;0,700;1,400&family=Roboto:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet" />
+
+  <style>
+    /* Базові змінні оформлення */
+    :root {
+      --bg-color: #0e1420;
+      --surface-color: #161f30;
+      --surface-hover: #1e293b;
+      --border-color: #26334d;
+      --text-color: #e2e8f0;
+      --muted-color: #94a3b8;
+      --accent-color: #38bdf8;
+      --accent-bg: rgba(56, 189, 248, 0.12);
+      --trans-bg: #152033;
+      --trans-border: #38bdf8;
+
+      /* Налаштування типографіки читання */
+      --reader-font: 'Inter', system-ui, -apple-system, sans-serif;
+      --reader-size: 19px;
+      --reader-line-height: 1.65;
+      --reader-padding-x: 16px;
+      --reader-align: left;
+      --reader-indent: 0em;
+      --reader-hyphens: none;
+    }
+
+    * {
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    body {
+      margin: 0;
+      padding: 0;
+      background-color: var(--bg-color);
+      color: var(--text-color);
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      overflow-x: hidden;
+      scroll-behavior: auto !important;
+    }
+
+    /* Стилі контейнера тексту для читання */
+    .reader-content {
+      font-family: var(--reader-font);
+      font-size: var(--reader-size);
+      line-height: var(--reader-line-height);
+      padding-left: var(--reader-padding-x);
+      padding-right: var(--reader-padding-x);
+    }
+
+    .paragraph-text {
+      text-align: var(--reader-align);
+      text-indent: var(--reader-indent);
+      hyphens: var(--reader-hyphens);
+      -webkit-hyphens: var(--reader-hyphens);
+      word-break: break-word;
+    }
+
+    /* Режим ігнорування стилів книжки */
+    .ignore-book-styles .paragraph-text em,
+    .ignore-book-styles .paragraph-text i,
+    .ignore-book-styles .paragraph-text strong,
+    .ignore-book-styles .paragraph-text b,
+    .ignore-book-styles .paragraph-text span {
+      font-style: normal !important;
+      font-weight: inherit !important;
+      color: inherit !important;
+      font-size: inherit !important;
+    }
+
+    /* Картка перекладу під абзацом */
+    .translation-box {
+      background-color: var(--trans-bg);
+      border: 1px solid var(--border-color);
+      border-left: 3px solid var(--trans-border);
+      border-radius: 10px;
+      padding: 12px 14px;
+      margin-top: 10px;
+      margin-bottom: 6px;
+      text-indent: 0;
+      text-align: left;
+    }
+
+    ::-webkit-scrollbar {
+      width: 5px;
+      height: 5px;
+    }
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: var(--border-color);
+      border-radius: 9999px;
+    }
+
+    input[type="range"] {
+      accent-color: var(--accent-color);
+    }
+  </style>
+</head>
+<body class="min-h-screen select-none sm:select-auto">
+
+  <!-- ==================== ЕКРАН 1: БІБЛІОТЕКА ==================== -->
+  <div id="library-view" class="max-w-2xl mx-auto px-4 py-6 pb-24">
+    <header class="flex items-center justify-between gap-3 mb-6">
+      <div>
+        <h1 class="text-xl font-bold tracking-tight" style="color: var(--text-color);">Бібліотека</h1>
+        <p id="library-count-label" class="text-xs mt-0.5" style="color: var(--muted-color);">0 з 5 книжок</p>
+      </div>
+      <div class="flex items-center gap-2">
+        <button onclick="openSettingsModal('backup')" class="p-2.5 rounded-xl border text-sm font-medium flex items-center gap-1.5" style="background-color: var(--surface-color); border-color: var(--border-color); color: var(--text-color);" title="Збереження й копії">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"/>
+          </svg>
+          <span class="hidden sm:inline">Копії</span>
+        </button>
+        <button onclick="openSettingsModal('translation')" class="p-2.5 rounded-xl border text-sm font-medium flex items-center gap-1.5" style="background-color: var(--surface-color); border-color: var(--border-color); color: var(--text-color);" title="Налаштування">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+            <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+          </svg>
+          <span>Налаштування</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Нагадування про резервну копію -->
+    <div id="backup-reminder-banner" class="hidden mb-5 p-3.5 rounded-xl border flex items-start justify-between gap-3" style="background-color: var(--accent-bg); border-color: var(--accent-color);">
+      <div class="flex items-start gap-2.5 text-xs sm:text-sm">
+        <svg class="w-5 h-5 shrink-0 mt-0.5" style="color: var(--accent-color);" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+        </svg>
+        <div>
+          <p class="font-semibold" style="color: var(--text-color);">Давно не створювалася резервна копія</p>
+          <p class="mt-0.5 opacity-90" style="color: var(--muted-color);">Дані зберігаються лише у браузері. Збережіть прогрес і кеш перекладів у файл.</p>
+          <button onclick="openSettingsModal('backup')" class="mt-2 font-semibold underline" style="color: var(--accent-color);">Перейти до збереження →</button>
+        </div>
+      </div>
+      <button onclick="dismissBackupReminder()" class="p-1 opacity-70 hover:opacity-100" title="Закрити">✕</button>
+    </div>
+
+    <!-- Кнопка та зона додавання книжки (підтримує клік, тап та перетягування) -->
+    <div class="mb-6">
+      <div id="upload-box"
+           onclick="triggerBookPicker()"
+           ondragover="handleDragOver(event)"
+           ondragleave="handleDragLeave(event)"
+           ondrop="handleFileDrop(event)"
+           role="button"
+           tabindex="0"
+           onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();triggerBookPicker();}"
+           class="flex flex-col items-center justify-center w-full p-5 border-2 border-dashed rounded-2xl cursor-pointer transition-colors"
+           style="background-color: var(--surface-color); border-color: var(--border-color);">
+        <div class="flex items-center gap-2.5 font-semibold text-sm sm:text-base" style="color: var(--accent-color);">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
+          </svg>
+          <span>Додати книжку</span>
+        </div>
+        <p class="text-xs mt-1 text-center" style="color: var(--muted-color);">Підтримуються EPUB, FB2, FB2.ZIP та TXT (до 5 книжок)</p>
+      </div>
+      <input id="book-file-input" type="file" accept=".epub,.fb2,.zip,.txt,application/epub+zip,text/plain,application/x-fictionbook+xml,application/zip" class="hidden" onchange="handleBookUpload(event)" />
+      <div id="upload-status" class="hidden mt-2 text-xs text-center font-medium" style="color: var(--accent-color);"></div>
+    </div>
+
+    <!-- Список книжок -->
+    <div id="books-list" class="space-y-3"></div>
+  </div>
+
+  <!-- ==================== ЕКРАН 2: ЧИТАЛКА ==================== -->
+  <div id="reader-view" class="hidden min-h-screen flex flex-col">
+    <!-- Фіксована верхня панель -->
+    <header class="sticky top-0 z-30 border-b px-3 py-2.5" style="background-color: var(--bg-color); border-color: var(--border-color);">
+      <div class="max-w-3xl mx-auto">
+        <!-- Верхній рядок: Назад + Назва + Кнопки інструментів -->
+        <div class="flex items-center justify-between gap-2">
+          <div class="flex items-center gap-2 min-w-0">
+            <button onclick="closeReader()" class="p-2 -ml-1 rounded-xl shrink-0" style="color: var(--text-color);" title="До бібліотеки">
+              <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/>
+              </svg>
+            </button>
+            <h2 id="reader-book-title" class="font-bold text-base sm:text-lg truncate" style="color: var(--text-color);">Назва книжки</h2>
+          </div>
+
+          <div class="flex items-center gap-1 shrink-0">
+            <!-- Додаткова кнопка швидкого збереження прогресу -->
+            <button onclick="saveCurrentAndExportProgress()" class="p-2 rounded-xl" style="color: var(--text-color);" title="Зберегти прогрес у файл">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"/>
+              </svg>
+            </button>
+            <!-- Зміст -->
+            <button onclick="openTocModal()" class="p-2 rounded-xl" style="color: var(--text-color);" title="Зміст">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h10"/>
+              </svg>
+            </button>
+            <!-- Налаштування вигляду й перекладу -->
+            <button onclick="openSettingsModal('appearance')" class="p-2 rounded-xl font-serif font-bold text-base" style="color: var(--text-color);" title="Вигляд і налаштування">
+              Aa
+            </button>
+          </div>
+        </div>
+
+        <!-- Другий рядок: Мовна пара + Прогрес у відсотках -->
+        <div class="flex items-center gap-2 mt-1.5 pl-8">
+          <button onclick="openLanguageModal()" class="px-3 py-1 rounded-full text-xs font-semibold flex items-center gap-1.5 border" style="background-color: var(--surface-color); border-color: var(--border-color); color: var(--text-color);">
+            <svg class="w-3.5 h-3.5" style="color: var(--accent-color);" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129"/>
+            </svg>
+            <span id="active-lang-pair">EN → UK</span>
+          </button>
+
+          <div class="px-3 py-1 rounded-full text-xs font-medium flex items-center gap-1.5 border" style="background-color: var(--surface-color); border-color: var(--border-color); color: var(--muted-color);">
+            <svg class="w-3.5 h-3.5" style="color: var(--accent-color);" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/>
+            </svg>
+            <span id="reader-progress-text">0%</span>
+            <span class="opacity-60">•</span>
+            <span id="reader-para-counter">0 / 0</span>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <!-- Полотно тексту -->
+    <main id="reader-scroll-area" class="flex-1 w-full max-w-3xl mx-auto pt-4 pb-32 reader-content">
+      <!-- Плашка останнього читання -->
+      <div id="last-read-banner" class="hidden mb-4 px-3.5 py-2 rounded-full border inline-flex items-center gap-2 text-xs font-medium" style="background-color: var(--surface-color); border-color: var(--border-color); color: var(--accent-color);">
+        <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"/>
+        </svg>
+        <span id="last-read-text">Останнє читання</span>
+      </div>
+
+      <!-- Контейнер абзаців -->
+      <div id="paragraphs-container" class="space-y-4"></div>
+    </main>
+  </div>
+
+  <!-- ==================== МОДАЛЬНЕ ВІКНО: ЗМІСТ ==================== -->
+  <div id="toc-modal" class="hidden fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 p-0 sm:p-4" onclick="closeModalOnBackdrop(event, 'toc-modal')">
+    <div class="w-full max-w-lg max-h-[80vh] flex flex-col rounded-t-2xl sm:rounded-2xl border overflow-hidden" style="background-color: var(--surface-color); border-color: var(--border-color);">
+      <div class="flex items-center justify-between px-4 py-3.5 border-b" style="border-color: var(--border-color);">
+        <h3 class="font-bold text-base">Зміст книжки</h3>
+        <button onclick="hideModal('toc-modal')" class="p-1.5 rounded-lg opacity-75 hover:opacity-100">✕</button>
+      </div>
+      <div id="toc-list" class="overflow-y-auto p-2 divide-y" style="border-color: var(--border-color);"></div>
+    </div>
+  </div>
+
+  <!-- ==================== МОДАЛЬНЕ ВІКНО: МОВНА ПАРА ==================== -->
+  <div id="language-modal" class="hidden fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 p-0 sm:p-4" onclick="closeModalOnBackdrop(event, 'language-modal')">
+    <div class="w-full max-w-md rounded-t-2xl sm:rounded-2xl border p-5" style="background-color: var(--surface-color); border-color: var(--border-color);">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="font-bold text-base">Мовна пара перекладу</h3>
+        <button onclick="hideModal('language-modal')" class="p-1.5 rounded-lg opacity-75">✕</button>
+      </div>
+
+      <p class="text-xs mb-4" style="color: var(--muted-color);">
+        Введіть будь-які коди мов (ISO 639-1) або оберіть зі швидких варіантів нижче.
+      </p>
+
+      <div class="grid grid-cols-2 gap-3 mb-4">
+        <div>
+          <label class="block text-xs font-medium mb-1" style="color: var(--muted-color);">Мова оригіналу</label>
+          <input id="source-lang-input" type="text" maxlength="10" placeholder="en" class="w-full px-3 py-2.5 rounded-xl border text-sm uppercase font-semibold outline-none" style="background-color: var(--bg-color); border-color: var(--border-color); color: var(--text-color);" />
+        </div>
+        <div>
+          <label class="block text-xs font-medium mb-1" style="color: var(--muted-color);">Мова перекладу</label>
+          <input id="target-lang-input" type="text" maxlength="10" placeholder="uk" class="w-full px-3 py-2.5 rounded-xl border text-sm uppercase font-semibold outline-none" style="background-color: var(--bg-color); border-color: var(--border-color); color: var(--text-color);" />
+        </div>
+      </div>
+
+      <div class="mb-5">
+        <p class="text-xs font-medium mb-2" style="color: var(--muted-color);">Популярні пари:</p>
+        <div class="flex flex-wrap gap-2">
+          <button onclick="setQuickLang('EN', 'UK')" class="px-3 py-1.5 rounded-lg border text-xs font-medium" style="background-color: var(--bg-color); border-color: var(--border-color);">EN → UK</button>
+          <button onclick="setQuickLang('DE', 'UK')" class="px-3 py-1.5 rounded-lg border text-xs font-medium" style="background-color: var(--bg-color); border-color: var(--border-color);">DE → UK</button>
+          <button onclick="setQuickLang('PL', 'UK')" class="px-3 py-1.5 rounded-lg border text-xs font-medium" style="background-color: var(--bg-color); border-color: var(--border-color);">PL → UK</button>
+          <button onclick="setQuickLang('ES', 'UK')" class="px-3 py-1.5 rounded-lg border text-xs font-medium" style="background-color: var(--bg-color); border-color: var(--border-color);">ES → UK</button>
+          <button onclick="setQuickLang('FR', 'UK')" class="px-3 py-1.5 rounded-lg border text-xs font-medium" style="background-color: var(--bg-color); border-color: var(--border-color);">FR → UK</button>
+          <button onclick="setQuickLang('IT', 'UK')" class="px-3 py-1.5 rounded-lg border text-xs font-medium" style="background-color: var(--bg-color); border-color: var(--border-color);">IT → UK</button>
+        </div>
+      </div>
+
+      <button onclick="saveLanguagePair()" class="w-full py-3 rounded-xl font-semibold text-sm text-slate-950" style="background-color: var(--accent-color);">
+        Застосувати мовну пару
+      </button>
+    </div>
+  </div>
+
+  <!-- ==================== МОДАЛЬНЕ ВІКНО: НАЛАШТУВАННЯ ==================== -->
+  <div id="settings-modal" class="hidden fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 p-0 sm:p-4" onclick="closeModalOnBackdrop(event, 'settings-modal')">
+    <div class="w-full max-w-lg max-h-[88vh] flex flex-col rounded-t-2xl sm:rounded-2xl border overflow-hidden" style="background-color: var(--surface-color); border-color: var(--border-color);">
+      <div class="px-4 pt-3.5 border-b" style="border-color: var(--border-color);">
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="font-bold text-base">Налаштування</h3>
+          <button onclick="hideModal('settings-modal')" class="p-1.5 rounded-lg opacity-75">✕</button>
+        </div>
+        <div class="flex gap-1 text-xs sm:text-sm font-medium">
+          <button id="tab-btn-appearance" onclick="switchSettingsTab('appearance')" class="px-3 py-2 border-b-2 font-semibold" style="border-color: var(--accent-color); color: var(--accent-color);">Вигляд</button>
+          <button id="tab-btn-translation" onclick="switchSettingsTab('translation')" class="px-3 py-2 border-b-2 border-transparent" style="color: var(--muted-color);">Переклад</button>
+          <button id="tab-btn-backup" onclick="switchSettingsTab('backup')" class="px-3 py-2 border-b-2 border-transparent" style="color: var(--muted-color);">Копії</button>
+        </div>
+      </div>
+
+      <div class="overflow-y-auto p-4 space-y-5 text-sm">
+
+        <!-- ВКЛАДКА 1: ВИГЛЯД -->
+        <div id="settings-tab-appearance" class="space-y-5">
+          <div>
+            <label class="block text-xs font-semibold uppercase tracking-wider mb-2" style="color: var(--muted-color);">Тема оформлення</label>
+            <div class="grid grid-cols-2 sm:grid-cols-5 gap-2">
+              <button onclick="setTheme('light')" class="p-2.5 rounded-xl border text-xs font-semibold bg-white text-slate-900 border-slate-300">Світла</button>
+              <button onclick="setTheme('sepia')" class="p-2.5 rounded-xl border text-xs font-semibold bg-[#f4ecd8] text-[#433422] border-[#d8cbb0]">Сепія</button>
+              <button onclick="setTheme('dark')" class="p-2.5 rounded-xl border text-xs font-semibold bg-[#0e1420] text-slate-100 border-slate-700">Темна</button>
+              <button onclick="setTheme('black')" class="p-2.5 rounded-xl border text-xs font-semibold bg-black text-neutral-200 border-neutral-800">Чорна</button>
+              <button onclick="setTheme('custom')" class="p-2.5 rounded-xl border text-xs font-semibold" style="background-color: var(--bg-color); border-color: var(--accent-color); color: var(--accent-color);">Власна</button>
+            </div>
+
+            <div id="custom-colors-panel" class="hidden mt-3 p-3 rounded-xl border grid grid-cols-2 gap-3" style="background-color: var(--bg-color); border-color: var(--border-color);">
+              <div>
+                <label class="block text-xs mb-1" style="color: var(--muted-color);">Колір фону</label>
+                <input id="custom-bg-picker" type="color" value="#1a1a2e" onchange="updateCustomColors()" class="w-full h-9 rounded cursor-pointer bg-transparent" />
+              </div>
+              <div>
+                <label class="block text-xs mb-1" style="color: var(--muted-color);">Колір тексту</label>
+                <input id="custom-text-picker" type="color" value="#eaeaea" onchange="updateCustomColors()" class="w-full h-9 rounded cursor-pointer bg-transparent" />
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-xs font-semibold uppercase tracking-wider mb-2" style="color: var(--muted-color);">Шрифт (з підтримкою кирилиці)</label>
+            <select id="font-family-select" onchange="updateTypography()" class="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style="background-color: var(--bg-color); border-color: var(--border-color); color: var(--text-color);">
+              <optgroup label="Без засічок (Sans-Serif)">
+                <option value="'Inter', sans-serif">Inter (Сучасний гротеск)</option>
+                <option value="'Roboto', sans-serif">Roboto</option>
+                <option value="'Open Sans', sans-serif">Open Sans</option>
+              </optgroup>
+              <optgroup label="Із засічками (Serif)">
+                <option value="'Lora', serif">Lora (Книжковий)</option>
+                <option value="'Merriweather', serif">Merriweather</option>
+                <option value="'PT Serif', serif">PT Serif</option>
+              </optgroup>
+            </select>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <div class="flex justify-between text-xs mb-1">
+                <span style="color: var(--muted-color);">Розмір шрифту</span>
+                <span id="font-size-val" class="font-semibold">19px</span>
+              </div>
+              <input id="font-size-range" type="range" min="14" max="30" step="1" value="19" oninput="updateTypography()" class="w-full" />
+            </div>
+
+            <div>
+              <div class="flex justify-between text-xs mb-1">
+                <span style="color: var(--muted-color);">Міжрядковий інтервал</span>
+                <span id="line-height-val" class="font-semibold">1.65</span>
+              </div>
+              <input id="line-height-range" type="range" min="1.2" max="2.2" step="0.05" value="1.65" oninput="updateTypography()" class="w-full" />
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <div class="flex justify-between text-xs mb-1">
+                <span style="color: var(--muted-color);">Бокові поля</span>
+                <span id="margin-x-val" class="font-semibold">16px</span>
+              </div>
+              <input id="margin-x-range" type="range" min="8" max="48" step="2" value="16" oninput="updateTypography()" class="w-full" />
+            </div>
+
+            <div>
+              <div class="flex justify-between text-xs mb-1">
+                <span style="color: var(--muted-color);">Абзацний відступ</span>
+                <span id="indent-val" class="font-semibold">0 em</span>
+              </div>
+              <input id="indent-range" type="range" min="0" max="2.5" step="0.5" value="0" oninput="updateTypography()" class="w-full" />
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-xs font-semibold uppercase tracking-wider mb-2" style="color: var(--muted-color);">Вирівнювання</label>
+            <div class="grid grid-cols-2 gap-2">
+              <button id="align-left-btn" onclick="setTextAlign('left')" class="py-2 rounded-xl border text-xs font-semibold">За лівим краєм</button>
+              <button id="align-justify-btn" onclick="setTextAlign('justify')" class="py-2 rounded-xl border text-xs font-semibold">За шириною</button>
+            </div>
+          </div>
+
+          <div class="space-y-3 pt-1">
+            <label class="flex items-center justify-between p-3 rounded-xl border cursor-pointer" style="background-color: var(--bg-color); border-color: var(--border-color);">
+              <div>
+                <div class="font-medium text-sm">Автоперенос слів</div>
+                <div class="text-xs" style="color: var(--muted-color);">Вимкнено за замовчуванням</div>
+              </div>
+              <input id="hyphens-toggle" type="checkbox" onchange="updateTypography()" class="w-5 h-5 rounded" />
+            </label>
+
+            <label class="flex items-center justify-between p-3 rounded-xl border cursor-pointer" style="background-color: var(--bg-color); border-color: var(--border-color);">
+              <div>
+                <div class="font-medium text-sm">Брати стилі з книжки</div>
+                <div class="text-xs" style="color: var(--muted-color);">Зберігати курсив та виділення з файлу</div>
+              </div>
+              <input id="book-styles-toggle" type="checkbox" checked onchange="updateTypography()" class="w-5 h-5 rounded" />
+            </label>
+          </div>
+        </div>
+
+        <!-- ВКЛАДКА 2: ПЕРЕКЛАД -->
+        <div id="settings-tab-translation" class="hidden space-y-4">
+          <div>
+            <label class="block text-xs font-semibold uppercase tracking-wider mb-2" style="color: var(--muted-color);">Рушій перекладу</label>
+            <div class="space-y-2">
+              <label class="flex items-start gap-3 p-3 rounded-xl border cursor-pointer" style="background-color: var(--bg-color); border-color: var(--border-color);">
+                <input type="radio" name="engine" value="mymemory" onchange="saveEngineSettings()" class="mt-1" />
+                <div>
+                  <div class="font-semibold text-sm">MyMemory (Безкоштовний, без ключа)</div>
+                  <div class="text-xs mt-0.5" style="color: var(--muted-color);">Працює одразу без реєстрації. Якість машинного перекладу.</div>
+                </div>
+              </label>
+
+              <label class="flex items-start gap-3 p-3 rounded-xl border cursor-pointer" style="background-color: var(--bg-color); border-color: var(--border-color);">
+                <input type="radio" name="engine" value="gemini" onchange="saveEngineSettings()" class="mt-1" />
+                <div>
+                  <div class="font-semibold text-sm">Google Gemini (Художній переклад)</div>
+                  <div class="text-xs mt-0.5" style="color: var(--muted-color);">Безкоштовний API-ключ у Google AI Studio без картки. Зберігає авторський стиль та імена.</div>
+                </div>
+              </label>
+
+              <label class="flex items-start gap-3 p-3 rounded-xl border cursor-pointer" style="background-color: var(--bg-color); border-color: var(--border-color);">
+                <input type="radio" name="engine" value="claude" onchange="saveEngineSettings()" class="mt-1" />
+                <div>
+                  <div class="font-semibold text-sm">Anthropic Claude (Художній переклад)</div>
+                  <div class="text-xs mt-0.5" style="color: var(--muted-color);">Потрібен API-ключ Anthropic. Висока літературна точність та контекст імен.</div>
+                </div>
+              </label>
+            </div>
+          </div>
+
+          <div id="gemini-key-box" class="hidden p-3.5 rounded-xl border space-y-2" style="background-color: var(--bg-color); border-color: var(--border-color);">
+            <label class="block text-xs font-semibold">API-ключ Google Gemini</label>
+            <input id="gemini-api-key" type="password" placeholder="AIzaSy..." oninput="saveEngineSettings()" class="w-full px-3 py-2 rounded-lg border text-xs outline-none" style="background-color: var(--surface-color); border-color: var(--border-color); color: var(--text-color);" />
+            <p class="text-[11px]" style="color: var(--muted-color);">Ключ зберігається локально у вашому браузері та нікуди не передається, окрім запитів до API Google.</p>
+          </div>
+
+          <div id="claude-key-box" class="hidden p-3.5 rounded-xl border space-y-2" style="background-color: var(--bg-color); border-color: var(--border-color);">
+            <label class="block text-xs font-semibold">API-ключ Anthropic Claude</label>
+            <input id="claude-api-key" type="password" placeholder="sk-ant-..." oninput="saveEngineSettings()" class="w-full px-3 py-2 rounded-lg border text-xs outline-none" style="background-color: var(--surface-color); border-color: var(--border-color); color: var(--text-color);" />
+            <p class="text-[11px]" style="color: var(--muted-color);">Використовує прямий браузерний доступ (direct-browser-access). Ключ лежить лише на вашому пристрої.</p>
+          </div>
+
+          <div class="p-3 rounded-xl border text-xs" style="background-color: var(--bg-color); border-color: var(--border-color); color: var(--muted-color);">
+            <strong style="color: var(--text-color);">Як працює кеш:</strong> кожен перекладений абзац зберігається за ключем (книжка + мовна пара + текст). При повторному відкритті переклад миттєво береться з пам'яті без витрати лімітів API.
+          </div>
+        </div>
+
+        <!-- ВКЛАДКА 3: ЗБЕРЕЖЕННЯ Й КОПІЇ -->
+        <div id="settings-tab-backup" class="hidden space-y-4">
+          <div class="p-3.5 rounded-xl border text-xs space-y-1.5" style="background-color: var(--bg-color); border-color: var(--border-color); color: var(--muted-color);">
+            <p class="font-semibold text-sm" style="color: var(--text-color);">Локальне зберігання</p>
+            <p>Книжки, прогрес, налаштування та кеш перекладів зберігаються лише у сховищі браузера на цьому пристрої.</p>
+            <p>Самі файли книжок у резервну копію не входять — після очищення даних браузера їх потрібно додати знову, а потім відновити копію.</p>
+          </div>
+
+          <div class="space-y-2.5">
+            <button onclick="exportProgressBackup()" class="w-full py-3 px-4 rounded-xl border font-semibold text-sm flex items-center justify-between" style="background-color: var(--bg-color); border-color: var(--border-color);">
+              <span>1. Зберегти прогрес і налаштування</span>
+              <span class="text-xs px-2 py-0.5 rounded" style="background-color: var(--accent-bg); color: var(--accent-color);">JSON</span>
+            </button>
+
+            <button onclick="exportCacheBackup()" class="w-full py-3 px-4 rounded-xl border font-semibold text-sm flex items-center justify-between" style="background-color: var(--bg-color); border-color: var(--border-color);">
+              <span>2. Зберегти кеш перекладів</span>
+              <span id="cache-count-badge" class="text-xs px-2 py-0.5 rounded" style="background-color: var(--accent-bg); color: var(--accent-color);">0 записів</span>
+            </button>
+
+            <label class="w-full py-3 px-4 rounded-xl font-semibold text-sm flex items-center justify-between cursor-pointer text-slate-950" style="background-color: var(--accent-color);">
+              <span>3. Відновити з файлу копії</span>
+              <span class="text-xs font-normal opacity-80">Авторозпізнавання</span>
+              <input id="restore-file-input" type="file" accept=".json,application/json" class="hidden" onchange="handleRestoreBackup(event)" />
+            </label>
+          </div>
+
+          <p id="last-backup-info" class="text-xs text-center" style="color: var(--muted-color);"></p>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- Спливаюче повідомлення (замість alert) -->
+  <div id="toast-message" class="hidden fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 rounded-full shadow-lg border text-xs sm:text-sm font-medium max-w-[90vw] text-center" style="background-color: var(--surface-color); border-color: var(--accent-color); color: var(--text-color);"></div>
+
+  <script>
+    /* ==========================================================================
+       1. БАЗА ДАНИХ INDEXEDDB (КНИЖКИ, ПРОГРЕС, КЕШ ПЕРЕКЛАДІВ, НАЛАШТУВАННЯ)
+       ========================================================================== */
+    const DB_NAME = 'TapBookReaderDB';
+    const DB_VERSION = 1;
+    let db = null;
+
+    const MAX_BOOKS = 5;
+
+    let state = {
+      books: [],
+      currentBook: null,
+      settings: {
+        theme: 'dark',
+        customBg: '#1a1a2e',
+        customText: '#eaeaea',
+        fontFamily: "'Inter', sans-serif",
+        fontSize: 19,
+        lineHeight: 1.65,
+        marginX: 16,
+        textAlign: 'left',
+        indent: 0,
+        hyphens: false,
+        keepBookStyles: true,
+        sourceLang: 'EN',
+        targetLang: 'UK',
+        engine: 'mymemory',
+        geminiKey: '',
+        claudeKey: '',
+        lastBackupTimestamp: 0,
+        reminderDismissedAt: 0
+      },
+      openTranslations: new Set(),
+      loadingTranslations: new Set()
+    };
+
+    let intersectionObserver = null;
+    let saveProgressTimeout = null;
+    let toastTimeout = null;
+
+    function openDatabase() {
+      return new Promise((resolve, reject) => {
+        if (!window.indexedDB) {
+          reject(new Error('Ваш браузер не підтримує локальне сховище IndexedDB.'));
+          return;
+        }
+        const request = indexedDB.open(DB_NAME, DB_VERSION);
+        request.onupgradeneeded = (event) => {
+          const database = event.target.result;
+          if (!database.objectStoreNames.contains('books')) {
+            database.createObjectStore('books', { keyPath: 'id' });
+          }
+          if (!database.objectStoreNames.contains('translations')) {
+            database.createObjectStore('translations', { keyPath: 'key' });
+          }
+          if (!database.objectStoreNames.contains('meta')) {
+            database.createObjectStore('meta', { keyPath: 'id' });
+          }
+        };
+        request.onsuccess = (event) => {
+          db = event.target.result;
+          resolve(db);
+        };
+        request.onerror = (event) => reject(event.target.error || new Error('Помилка відкриття IndexedDB'));
+        request.onblocked = () => reject(new Error('Доступ до сховища браузера заблоковано.'));
+      });
+    }
+
+    function dbGetAll(storeName) {
+      return new Promise((resolve, reject) => {
+        if (!db) return resolve([]);
+        const tx = db.transaction(storeName, 'readonly');
+        const store = tx.objectStore(storeName);
+        const req = store.getAll();
+        req.onsuccess = () => resolve(req.result || []);
+        req.onerror = () => reject(req.error);
+        tx.onabort = () => reject(tx.error || new Error('Операцію читання скасовано'));
+      });
+    }
+
+    function dbGet(storeName, key) {
+      return new Promise((resolve, reject) => {
+        if (!db) return resolve(null);
+        const tx = db.transaction(storeName, 'readonly');
+        const store = tx.objectStore(storeName);
+        const req = store.get(key);
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+        tx.onabort = () => reject(tx.error || new Error('Операцію пошуку скасовано'));
+      });
+    }
+
+    function dbPut(storeName, value) {
+      return new Promise((resolve, reject) => {
+        if (!db) return reject(new Error('База даних не ініціалізована'));
+        const tx = db.transaction(storeName, 'readwrite');
+        const store = tx.objectStore(storeName);
+        const req = store.put(value);
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+        tx.onabort = () => reject(tx.error || new Error('Не вдалося зберегти у сховище браузера'));
+      });
+    }
+
+    function dbDelete(storeName, key) {
+      return new Promise((resolve, reject) => {
+        if (!db) return resolve();
+        const tx = db.transaction(storeName, 'readwrite');
+        const store = tx.objectStore(storeName);
+        const req = store.delete(key);
+        req.onsuccess = () => resolve();
+        req.onerror = () => reject(req.error);
+        tx.onabort = () => reject(tx.error || new Error('Не вдалося видалити запис'));
+      });
+    }
+
+    /* ==========================================================================
+       2. ДЕМО-КНИЖКА (ДЛЯ МИТТЄВОГО ТЕСТУВАННЯ)
+       ========================================================================== */
+    function createDemoBook() {
+      return {
+        id: 'demo-other-bennet-sister',
+        title: 'The Other Bennet Sister (Уривок)',
+        sourceLang: 'EN',
+        addedAt: Date.now(),
+        lastReadAt: null,
+        currentParagraph: 0,
+        toc: [
+          { title: 'Chapter 1: Longbourn', paragraphIndex: 0 },
+          { title: 'Chapter 2: Mary’s Reflections', paragraphIndex: 6 }
+        ],
+        paragraphs: [
+          {
+            html: 'As baby after baby arrived at Longbourn with promising regularity, surely, it was only a matter of time before the much-anticipated Bennet boy put in his overdue appearance.',
+            text: 'As baby after baby arrived at Longbourn with promising regularity, surely, it was only a matter of time before the much-anticipated Bennet boy put in his overdue appearance.'
+          },
+          {
+            html: 'But when the tally of girls reached five, and it was clear no more children could be expected, the entail cast a deepening shadow over the family’s happiness.',
+            text: 'But when the tally of girls reached five, and it was clear no more children could be expected, the entail cast a deepening shadow over the family’s happiness.'
+          },
+          {
+            html: 'On Mr.',
+            text: 'On Mr.'
+          },
+          {
+            html: 'Bennet’s death, his widow and daughters would be left with nothing but five thousand pounds in the four per cents, and a humiliating dependence on the uncertain charity of a distant and unknown relative.',
+            text: 'Bennet’s death, his widow and daughters would be left with nothing but five thousand pounds in the four per cents, and a humiliating dependence on the uncertain charity of a distant and unknown relative.'
+          },
+          {
+            html: 'Their friends were not without sympathy, though Mrs. Bennet’s loud lamentations often tested the patience of the entire neighborhood of Meryton.',
+            text: 'Their friends were not without sympathy, though Mrs. Bennet’s loud lamentations often tested the patience of the entire neighborhood of Meryton.'
+          },
+          {
+            html: 'Jane was the beauty, Elizabeth the wit, Lydia the wild spirit, and Kitty her shadow. Nestled quietly in the middle was Mary—bookish, earnest, and forever trying to understand the rules of a world that seemed designed for everyone else.',
+            text: 'Jane was the beauty, Elizabeth the wit, Lydia the wild spirit, and Kitty her shadow. Nestled quietly in the middle was Mary—bookish, earnest, and forever trying to understand the rules of a world that seemed designed for everyone else.'
+          },
+          {
+            html: '<em>Chapter II.</em> In the library at Longbourn, dust motes danced in the afternoon light while Mary copied moral extracts into her commonplace book, convinced that diligence might substitute for charm.',
+            text: 'Chapter II. In the library at Longbourn, dust motes danced in the afternoon light while Mary copied moral extracts into her commonplace book, convinced that diligence might substitute for charm.'
+          },
+          {
+            html: 'Yet whenever she looked up from Fordyce’s Sermons, she wondered what lay beyond the hedges of Hertfordshire and whether a quiet voice could ever be heard in a loud household.',
+            text: 'Yet whenever she looked up from Fordyce’s Sermons, she wondered what lay beyond the hedges of Hertfordshire and whether a quiet voice could ever be heard in a loud household.'
+          }
+        ]
+      };
+    }
+
+    /* ==========================================================================
+       3. ПЕРЕВІРКА JSZIP ТА ПАРСИНГ ФАЙЛІВ: EPUB, FB2, FB2.ZIP, TXT
+       ========================================================================== */
+    function ensureJSZipLoaded() {
+      if (typeof window.JSZip !== 'undefined') {
+        return Promise.resolve(window.JSZip);
+      }
+      const fallbackUrls = [
+        'https://unpkg.com/jszip@3.10.1/dist/jszip.min.js',
+        'https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js'
+      ];
+      return new Promise((resolve, reject) => {
+        let idx = 0;
+        function tryNext() {
+          if (typeof window.JSZip !== 'undefined') return resolve(window.JSZip);
+          if (idx >= fallbackUrls.length) {
+            return reject(new Error('Не вдалося завантажити бібліотеку JSZip для розпакування EPUB/ZIP. Перевірте інтернет-з’єднання.'));
+          }
+          const script = document.createElement('script');
+          script.src = fallbackUrls[idx++];
+          script.onload = () => {
+            if (typeof window.JSZip !== 'undefined') resolve(window.JSZip);
+            else tryNext();
+          };
+          script.onerror = () => tryNext();
+          document.head.appendChild(script);
+        }
+        tryNext();
+      });
+    }
+
+    function triggerBookPicker() {
+      if (state.books.length >= MAX_BOOKS) {
+        showToast(`У бібліотеці вже максимум (${MAX_BOOKS} книжок). Видаліть одну, щоб додати нову.`);
+        return;
+      }
+      const input = document.getElementById('book-file-input');
+      if (input) input.click();
+    }
+
+    function handleDragOver(event) {
+      event.preventDefault();
+      event.stopPropagation();
+      const box = document.getElementById('upload-box');
+      if (box) box.style.borderColor = 'var(--accent-color)';
+    }
+
+    function handleDragLeave(event) {
+      event.preventDefault();
+      event.stopPropagation();
+      const box = document.getElementById('upload-box');
+      if (box) box.style.borderColor = 'var(--border-color)';
+    }
+
+    function handleFileDrop(event) {
+      event.preventDefault();
+      event.stopPropagation();
+      const box = document.getElementById('upload-box');
+      if (box) box.style.borderColor = 'var(--border-color)';
+      const files = event.dataTransfer?.files;
+      if (files && files.length > 0) {
+        processSelectedBookFile(files[0]);
+      }
+    }
+
+    function handleBookUpload(event) {
+      const input = event.target;
+      const file = input.files && input.files[0];
+      if (!file) return;
+      processSelectedBookFile(file).finally(() => {
+        input.value = '';
+      });
+    }
+
+    async function processSelectedBookFile(file) {
+      if (state.books.length >= MAX_BOOKS) {
+        showToast(`У бібліотеці вже максимум (${MAX_BOOKS} книжок). Видаліть одну, щоб додати нову.`);
+        return;
+      }
+
+      const statusEl = document.getElementById('upload-status');
+      statusEl.textContent = `Завантаження файлу «${file.name}»...`;
+      statusEl.classList.remove('hidden');
+
+      try {
+        const lowerName = file.name.toLowerCase();
+        let parsed = null;
+
+        if (lowerName.endsWith('.epub')) {
+          await ensureJSZipLoaded();
+          parsed = await parseEpubFile(file);
+        } else if (lowerName.endsWith('.fb2.zip') || lowerName.endsWith('.zip')) {
+          await ensureJSZipLoaded();
+          parsed = await parseFb2ZipFile(file);
+        } else if (lowerName.endsWith('.fb2')) {
+          const buffer = await file.arrayBuffer();
+          const xmlText = decodeSmartText(buffer);
+          parsed = parseFb2Xml(xmlText, file.name);
+        } else if (lowerName.endsWith('.txt')) {
+          const buffer = await file.arrayBuffer();
+          const text = decodeSmartText(buffer);
+          parsed = parseTxtContent(text, file.name);
+        } else {
+          throw new Error('Непідтримуваний формат. Оберіть EPUB, FB2, FB2.ZIP або TXT.');
+        }
+
+        if (!parsed || !parsed.paragraphs || parsed.paragraphs.length === 0) {
+          throw new Error('У файлі не знайдено читабельного тексту.');
+        }
+
+        const newBook = {
+          id: 'book_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
+          title: parsed.title || stripExtension(file.name),
+          sourceLang: (parsed.lang || state.settings.sourceLang || 'EN').toUpperCase().slice(0, 2),
+          addedAt: Date.now(),
+          lastReadAt: null,
+          currentParagraph: 0,
+          toc: parsed.toc && parsed.toc.length ? parsed.toc : [{ title: 'Початок книжки', paragraphIndex: 0 }],
+          paragraphs: parsed.paragraphs
+        };
+
+        await dbPut('books', newBook);
+        state.books.unshift(newBook);
+        renderLibrary();
+        showToast(`Книжку «${newBook.title}» додано (${newBook.paragraphs.length} абз.)`);
+      } catch (err) {
+        console.error('Помилка імпорту книжки:', err);
+        showToast(err.message || 'Не вдалося відкрити файл книжки.');
+      } finally {
+        statusEl.classList.add('hidden');
+      }
+    }
+
+    function stripExtension(filename) {
+      return filename.replace(/\.(fb2\.zip|epub|fb2|txt|zip)$/i, '');
+    }
+
+    // Автоматичне визначення кодування (UTF-8 або Windows-1251)
+    function decodeSmartText(arrayBuffer) {
+      const bytes = new Uint8Array(arrayBuffer);
+      if (bytes[0] === 0xEF && bytes[1] === 0xBB && bytes[2] === 0xBF) {
+        return new TextDecoder('utf-8').decode(bytes);
+      }
+      const headAscii = new TextDecoder('ascii', { fatal: false }).decode(bytes.slice(0, 400)).toLowerCase();
+      if (headAscii.includes('windows-1251') || headAscii.includes('cp1251')) {
+        return new TextDecoder('windows-1251').decode(bytes);
+      }
+      try {
+        return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+      } catch (e) {
+        return new TextDecoder('windows-1251').decode(bytes);
+      }
+    }
+
+    // Парсер TXT (абзаци за порожніми рядками)
+    function parseTxtContent(rawText, fileName) {
+      const normalized = rawText.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+      const blocks = normalized.split(/\n\s*\n+/);
+      const paragraphs = [];
+      const toc = [];
+
+      blocks.forEach((block) => {
+        const cleaned = block.replace(/\n+/g, ' ').replace(/\s+/g, ' ').trim();
+        if (!cleaned) return;
+        const idx = paragraphs.length;
+        if (cleaned.length < 75 && /^(chapter|part|розділ|глава|частина|\d+\.)/i.test(cleaned)) {
+          toc.push({ title: cleaned, paragraphIndex: idx });
+        }
+        paragraphs.push({
+          html: escapeHtml(cleaned),
+          text: cleaned
+        });
+      });
+
+      return {
+        title: stripExtension(fileName),
+        lang: '',
+        toc,
+        paragraphs
+      };
+    }
+
+    // Парсер FB2.ZIP
+    async function parseFb2ZipFile(file) {
+      const zip = await JSZip.loadAsync(file);
+      const fb2Entry = Object.values(zip.files).find(f => !f.dir && f.name.toLowerCase().endsWith('.fb2'));
+      if (!fb2Entry) {
+        throw new Error('У ZIP-архіві не знайдено файл .fb2');
+      }
+      const buffer = await fb2Entry.async('arraybuffer');
+      const xmlText = decodeSmartText(buffer);
+      return parseFb2Xml(xmlText, file.name);
+    }
+
+    // Парсер FB2 XML (з урахуванням просторів імен та вкладених секцій)
+    function parseFb2Xml(xmlText, fileName) {
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(xmlText, 'application/xml');
+
+      const titleEl = doc.getElementsByTagNameNS('*', 'book-title')[0] || doc.querySelector('book-title');
+      const langEl = doc.getElementsByTagNameNS('*', 'lang')[0] || doc.querySelector('lang');
+      const title = titleEl ? titleEl.textContent.trim() : stripExtension(fileName);
+      const lang = langEl ? langEl.textContent.trim() : '';
+
+      const paragraphs = [];
+      const toc = [];
+
+      const bodies = doc.getElementsByTagNameNS('*', 'body');
+      const mainBody = bodies[0] || doc.querySelector('body');
+      if (!mainBody) {
+        return { title, lang, toc, paragraphs };
+      }
+
+      function walkNode(node) {
+        if (!node || !node.children) return;
+
+        const directTitle = Array.from(node.children).find(el => el.localName && el.localName.toLowerCase() === 'title');
+        if (directTitle) {
+          const chapterTitle = directTitle.textContent.replace(/\s+/g, ' ').trim();
+          if (chapterTitle) {
+            toc.push({ title: chapterTitle, paragraphIndex: paragraphs.length });
+            paragraphs.push({
+              html: `<strong>${escapeHtml(chapterTitle)}</strong>`,
+              text: chapterTitle
+            });
+          }
+        }
+
+        Array.from(node.children).forEach(child => {
+          const tag = (child.localName || child.tagName || '').toLowerCase();
+          if (tag === 'section' || tag === 'epigraph' || tag === 'cite' || tag === 'poem' || tag === 'stanza') {
+            walkNode(child);
+          } else if (tag === 'p' || tag === 'v' || tag === 'subtitle' || tag === 'text-author') {
+            const text = child.textContent.replace(/\s+/g, ' ').trim();
+            if (text) {
+              const sanitized = sanitizeInlineHtml(child);
+              paragraphs.push({
+                html: tag === 'subtitle' ? `<strong>${sanitized}</strong>` : sanitized,
+                text
+              });
+            }
+          }
+        });
+      }
+
+      walkNode(mainBody);
+      return { title, lang, toc, paragraphs };
+    }
+
+    // Допоміжна функція для пошуку файлу всередині ZIP з урахуванням регістру та кодування URL
+    function findZipEntry(zip, rawPath) {
+      if (!rawPath) return null;
+      const cleanPath = rawPath.split('#')[0].replace(/^\.?\//, '');
+      let decodedPath = cleanPath;
+      try {
+        decodedPath = decodeURIComponent(cleanPath);
+      } catch (e) {}
+
+      const candidates = [cleanPath, decodedPath];
+      for (const c of candidates) {
+        if (zip.file(c)) return zip.file(c);
+      }
+      const lowerTargets = candidates.map(c => c.toLowerCase());
+      return Object.values(zip.files).find(f => !f.dir && lowerTargets.includes(f.name.toLowerCase())) || null;
+    }
+
+    // Парсер EPUB
+    async function parseEpubFile(file) {
+      const zip = await JSZip.loadAsync(file);
+      const parser = new DOMParser();
+
+      let title = stripExtension(file.name);
+      let lang = '';
+      let orderedEntries = [];
+
+      const containerFile = findZipEntry(zip, 'META-INF/container.xml');
+      if (containerFile) {
+        const containerXml = await containerFile.async('text');
+        const containerDoc = parser.parseFromString(containerXml, 'application/xml');
+        const rootfileEl = containerDoc.getElementsByTagNameNS('*', 'rootfile')[0] || containerDoc.querySelector('rootfile');
+        const opfPath = rootfileEl ? rootfileEl.getAttribute('full-path') : null;
+
+        if (opfPath) {
+          const opfEntry = findZipEntry(zip, opfPath);
+          if (opfEntry) {
+            const opfDir = opfPath.includes('/') ? opfPath.substring(0, opfPath.lastIndexOf('/') + 1) : '';
+            const opfText = await opfEntry.async('text');
+            const opfDoc = parser.parseFromString(opfText, 'application/xml');
+
+            const dcTitle = opfDoc.getElementsByTagNameNS('*', 'title')[0];
+            const dcLang = opfDoc.getElementsByTagNameNS('*', 'language')[0];
+            if (dcTitle && dcTitle.textContent.trim()) title = dcTitle.textContent.trim();
+            if (dcLang && dcLang.textContent.trim()) lang = dcLang.textContent.trim();
+
+            const manifest = {};
+            Array.from(opfDoc.getElementsByTagNameNS('*', 'item')).forEach(item => {
+              const id = item.getAttribute('id');
+              const href = item.getAttribute('href') || '';
+              if (id) manifest[id] = href;
+            });
+
+            const spineRefs = Array.from(opfDoc.getElementsByTagNameNS('*', 'itemref'));
+            spineRefs.forEach(ref => {
+              const idref = ref.getAttribute('idref');
+              const href = manifest[idref];
+              if (href) {
+                const entry = findZipEntry(zip, opfDir + href) || findZipEntry(zip, href);
+                if (entry) orderedEntries.push(entry);
+              }
+            });
+          }
+        }
+      }
+
+      // Резервний пошук усіх XHTML/HTML файлів в архіві, якщо OPF відсутній або порожній
+      if (orderedEntries.length === 0) {
+        orderedEntries = Object.values(zip.files)
+          .filter(f => !f.dir && /\.(xhtml|html|htm)$/i.test(f.name) && !f.name.toLowerCase().includes('nav.'))
+          .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+      }
+
+      const paragraphs = [];
+      const toc = [];
+
+      for (const entry of orderedEntries) {
+        const htmlString = await entry.async('text');
+        const chapterDoc = parser.parseFromString(htmlString, 'text/html');
+        const body = chapterDoc.body;
+        if (!body) continue;
+
+        let chapterAddedToToc = false;
+
+        const blocks = body.querySelectorAll('h1, h2, h3, h4, p, li, blockquote, div');
+        blocks.forEach(el => {
+          const tag = el.tagName.toLowerCase();
+          // Для div беремо лише ті, які не містять блочних під-елементів
+          if (tag === 'div' && el.querySelector('p, div, h1, h2, h3, h4, li, blockquote')) return;
+          if (el.parentElement && el.parentElement.closest('p, li, blockquote, h1, h2, h3, h4')) return;
+
+          const text = el.textContent.replace(/\s+/g, ' ').trim();
+          if (!text) return;
+
+          if (!chapterAddedToToc && (tag.startsWith('h') || paragraphs.length === 0)) {
+            toc.push({
+              title: text.slice(0, 80),
+              paragraphIndex: paragraphs.length
+            });
+            chapterAddedToToc = true;
+          }
+
+          const sanitized = sanitizeInlineHtml(el);
+          paragraphs.push({
+            html: tag.startsWith('h') ? `<strong>${sanitized}</strong>` : sanitized,
+            text
+          });
+        });
+      }
+
+      return { title, lang, toc, paragraphs };
+    }
+
+    function escapeHtml(str) {
+      return str
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    function sanitizeInlineHtml(element) {
+      let result = '';
+      element.childNodes.forEach(node => {
+        if (node.nodeType === Node.TEXT_NODE) {
+          result += escapeHtml(node.textContent);
+        } else if (node.nodeType === Node.ELEMENT_NODE) {
+          const tag = (node.localName || node.tagName || '').toLowerCase();
+          const inner = sanitizeInlineHtml(node);
+          if (tag === 'em' || tag === 'i' || tag === 'emphasis') {
+            result += `<em>${inner}</em>`;
+          } else if (tag === 'strong' || tag === 'b') {
+            result += `<strong>${inner}</strong>`;
+          } else if (tag === 'br') {
+            result += ' ';
+          } else {
+            result += inner;
+          }
+        }
+      });
+      return result.replace(/\s+/g, ' ').trim();
+    }
+
+    /* ==========================================================================
+       4. БІБЛІОТЕКА ТА ВІДОБРАЖЕННЯ СПИСКУ КНИЖОК
+       ========================================================================== */
+    function renderLibrary() {
+      const container = document.getElementById('books-list');
+      const countLabel = document.getElementById('library-count-label');
+      countLabel.textContent = `${state.books.length} з ${MAX_BOOKS} книжок`;
+
+      if (state.books.length === 0) {
+        container.innerHTML = `
+          <div class="p-8 rounded-2xl border text-center" style="background-color: var(--surface-color); border-color: var(--border-color);">
+            <p class="font-medium text-sm">Бібліотека порожня</p>
+            <p class="text-xs mt-1" style="color: var(--muted-color);">Завантажте файл EPUB, FB2 або TXT, щоб почати читання.</p>
+          </div>
+        `;
+        return;
+      }
+
+      container.innerHTML = state.books.map(book => {
+        const total = book.paragraphs.length || 1;
+        const percent = Math.min(100, Math.round(((book.currentParagraph + 1) / total) * 100));
+        const displayPercent = book.currentParagraph === 0 && !book.lastReadAt ? 0 : percent;
+
+        return `
+          <div class="p-4 rounded-2xl border flex flex-col gap-3" style="background-color: var(--surface-color); border-color: var(--border-color);">
+            <div class="flex items-start justify-between gap-3">
+              <div class="min-w-0">
+                <h3 class="font-bold text-base leading-snug break-words" style="color: var(--text-color);">${escapeHtml(book.title)}</h3>
+                <div class="flex items-center gap-2 mt-1.5 text-xs" style="color: var(--muted-color);">
+                  <span class="font-semibold" style="color: var(--accent-color);">${displayPercent}% прочитано</span>
+                  <span>•</span>
+                  <span>${book.paragraphs.length} абз.</span>
+                </div>
+              </div>
+              <button onclick="deleteBook('${book.id}')" class="p-2 rounded-xl border shrink-0 opacity-75 hover:opacity-100" style="border-color: var(--border-color); color: #f87171;" title="Видалити книжку">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                </svg>
+              </button>
+            </div>
+
+            <div class="w-full h-1.5 rounded-full overflow-hidden" style="background-color: var(--bg-color);">
+              <div class="h-full rounded-full" style="width: ${displayPercent}%; background-color: var(--accent-color);"></div>
+            </div>
+
+            <div class="flex justify-end">
+              <button onclick="openBook('${book.id}')" class="px-4 py-2 rounded-xl font-semibold text-xs sm:text-sm text-slate-950" style="background-color: var(--accent-color);">
+                ${displayPercent > 0 ? 'Продовжити' : 'Читати'}
+              </button>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    async function deleteBook(bookId) {
+      await dbDelete('books', bookId);
+      state.books = state.books.filter(b => b.id !== bookId);
+      renderLibrary();
+      showToast('Книжку видалено з бібліотеки');
+    }
+
+    /* ==========================================================================
+       5. РЕЖИМ ЧИТАННЯ, БЕЗКІНЕЧНИЙ СКРОЛ, СКЛЕЮВАННЯ АБЗАЦІВ
+       ========================================================================== */
+    function openBook(bookId) {
+      const book = state.books.find(b => b.id === bookId);
+      if (!book) return;
+
+      state.currentBook = book;
+      state.openTranslations.clear();
+      state.loadingTranslations.clear();
+
+      if (book.sourceLang && book.sourceLang !== state.settings.targetLang) {
+        state.settings.sourceLang = book.sourceLang;
+        saveSettings();
+      }
+
+      document.getElementById('library-view').classList.add('hidden');
+      document.getElementById('reader-view').classList.remove('hidden');
+
+      document.getElementById('reader-book-title').textContent = book.title;
+      updateLangPairBadge();
+
+      const lastBanner = document.getElementById('last-read-banner');
+      if (book.lastReadAt) {
+        const d = new Date(book.lastReadAt);
+        const timeStr = d.toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' });
+        const dateStr = d.toLocaleDateString('uk-UA', { day: 'numeric', month: 'short' });
+        document.getElementById('last-read-text').textContent = `Останнє читання: ${dateStr} о ${timeStr}`;
+        lastBanner.classList.remove('hidden');
+      } else {
+        lastBanner.classList.add('hidden');
+      }
+
+      renderReaderParagraphs();
+
+      const targetIdx = Math.min(book.currentParagraph || 0, book.paragraphs.length - 1);
+      updateReaderProgressUI(targetIdx);
+
+      requestAnimationFrame(() => {
+        const targetEl = document.getElementById(`para-block-${targetIdx}`);
+        if (targetEl && targetIdx > 0) {
+          targetEl.scrollIntoView({ behavior: 'auto', block: 'start' });
+          window.scrollBy(0, -95);
+        } else {
+          window.scrollTo(0, 0);
+        }
+        setupScrollObserver();
+      });
+    }
+
+    function closeReader() {
+      if (intersectionObserver) {
+        intersectionObserver.disconnect();
+      }
+      state.currentBook = null;
+      document.getElementById('reader-view').classList.add('hidden');
+      document.getElementById('library-view').classList.remove('hidden');
+      renderLibrary();
+      checkBackupReminder();
+    }
+
+    function renderReaderParagraphs() {
+      const container = document.getElementById('paragraphs-container');
+      const book = state.currentBook;
+      if (!book) return;
+
+      container.innerHTML = book.paragraphs.map((p, idx) => {
+        const isOpen = state.openTranslations.has(idx);
+        const isLoading = state.loadingTranslations.has(idx);
+
+        return `
+          <article id="para-block-${idx}" data-index="${idx}" class="relative group py-1">
+            <div class="flex items-start gap-2.5">
+              <div class="flex-1 min-w-0 paragraph-text">${p.html}</div>
+
+              <div class="flex flex-col items-center gap-1.5 shrink-0 pt-0.5">
+                <button onclick="toggleParagraphTranslation(${idx})"
+                        class="w-8 h-8 rounded-lg flex items-center justify-center transition-none"
+                        style="color: ${isOpen ? 'var(--text-color)' : 'var(--muted-color)'}; background-color: ${isOpen ? 'var(--surface-color)' : 'transparent'};"
+                        title="${isOpen ? 'Закрити переклад' : 'Перекласти абзац'}">
+                  ${isOpen
+                    ? `<svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>`
+                    : `<svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129"/></svg>`
+                  }
+                </button>
+
+                ${idx > 0 ? `
+                  <button onclick="mergeWithPrevious(${idx})"
+                          class="w-7 h-7 rounded-lg flex items-center justify-center opacity-45 hover:opacity-100"
+                          style="color: var(--muted-color);"
+                          title="Склеїти з попереднім абзацом">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M5 10l7-7m0 0l7 7m-7-7v18"/>
+                    </svg>
+                  </button>
+                ` : ''}
+              </div>
+            </div>
+
+            <div id="trans-slot-${idx}" class="${isOpen || isLoading ? '' : 'hidden'}"></div>
+          </article>
+        `;
+      }).join('');
+
+      state.openTranslations.forEach(idx => {
+        renderTranslationSlot(idx);
+      });
+    }
+
+    async function mergeWithPrevious(index) {
+      const book = state.currentBook;
+      if (!book || index <= 0 || index >= book.paragraphs.length) return;
+
+      const prev = book.paragraphs[index - 1];
+      const curr = book.paragraphs[index];
+
+      prev.html = `${prev.html} ${curr.html}`.trim();
+      prev.text = `${prev.text} ${curr.text}`.replace(/\s+/g, ' ').trim();
+
+      book.paragraphs.splice(index, 1);
+
+      book.toc.forEach(item => {
+        if (item.paragraphIndex >= index) {
+          item.paragraphIndex = Math.max(0, item.paragraphIndex - 1);
+        }
+      });
+
+      const updatedOpen = new Set();
+      state.openTranslations.forEach(openIdx => {
+        if (openIdx < index - 1) updatedOpen.add(openIdx);
+      });
+      state.openTranslations = updatedOpen;
+
+      await dbPut('books', book);
+      renderReaderParagraphs();
+      setupScrollObserver();
+      showToast('Абзац склеєно з попереднім');
+    }
+
+    function setupScrollObserver() {
+      if (intersectionObserver) {
+        intersectionObserver.disconnect();
+      }
+
+      intersectionObserver = new IntersectionObserver((entries) => {
+        let topMostIndex = null;
+        entries.forEach(entry => {
+          if (entry.isIntersecting) {
+            const idx = parseInt(entry.target.getAttribute('data-index'), 10);
+            if (topMostIndex === null || idx < topMostIndex) {
+              topMostIndex = idx;
+            }
+          }
+        });
+
+        if (topMostIndex !== null && state.currentBook) {
+          state.currentBook.currentParagraph = topMostIndex;
+          state.currentBook.lastReadAt = Date.now();
+          updateReaderProgressUI(topMostIndex);
+
+          clearTimeout(saveProgressTimeout);
+          saveProgressTimeout = setTimeout(() => {
+            if (state.currentBook) {
+              dbPut('books', state.currentBook);
+            }
+          }, 500);
+        }
+      }, {
+        root: null,
+        rootMargin: '-90px 0px -65% 0px',
+        threshold: 0
+      });
+
+      document.querySelectorAll('#paragraphs-container > article').forEach(el => {
+        intersectionObserver.observe(el);
+      });
+    }
+
+    function updateReaderProgressUI(index) {
+      const book = state.currentBook;
+      if (!book) return;
+      const total = book.paragraphs.length || 1;
+      const pct = Math.min(100, Math.round(((index + 1) / total) * 100));
+      document.getElementById('reader-progress-text').textContent = `${pct}%`;
+      document.getElementById('reader-para-counter').textContent = `${index + 1} / ${total}`;
+    }
+
+    /* ==========================================================================
+       6. ПЕРЕКЛАД ПО ТАПУ ТА КЕШУВАННЯ (MYMEMORY, GEMINI, CLAUDE)
+       ========================================================================== */
+    function buildCacheKey(bookId, src, tgt, text) {
+      return `${bookId}::${src.toUpperCase()}->${tgt.toUpperCase()}::${text.trim()}`;
+    }
+
+    async function toggleParagraphTranslation(index) {
+      const book = state.currentBook;
+      if (!book) return;
+
+      if (state.openTranslations.has(index)) {
+        state.openTranslations.delete(index);
+        updateParagraphButtons(index);
+        const slot = document.getElementById(`trans-slot-${index}`);
+        if (slot) {
+          slot.classList.add('hidden');
+          slot.innerHTML = '';
+        }
+        return;
+      }
+
+      const paragraph = book.paragraphs[index];
+      if (!paragraph) return;
+
+      const src = state.settings.sourceLang.toUpperCase();
+      const tgt = state.settings.targetLang.toUpperCase();
+      const cacheKey = buildCacheKey(book.id, src, tgt, paragraph.text);
+
+      const cached = await dbGet('translations', cacheKey);
+      if (cached) {
+        state.openTranslations.add(index);
+        updateParagraphButtons(index);
+        renderTranslationSlot(index, cached.translatedText, cached.engine, true);
+        return;
+      }
+
+      state.loadingTranslations.add(index);
+      const slot = document.getElementById(`trans-slot-${index}`);
+      if (slot) {
+        slot.classList.remove('hidden');
+        slot.innerHTML = `
+          <div class="translation-box text-xs flex items-center gap-2" style="color: var(--muted-color);">
+            <span>Перекладаю (${getEngineDisplayName(state.settings.engine)})...</span>
+          </div>
+        `;
+      }
+
+      try {
+        const prevContext = index > 0 ? book.paragraphs[index - 1].text : '';
+        const translatedText = await requestTranslation(paragraph.text, src, tgt, prevContext);
+
+        await dbPut('translations', {
+          key: cacheKey,
+          bookId: book.id,
+          sourceLang: src,
+          targetLang: tgt,
+          sourceText: paragraph.text,
+          translatedText,
+          engine: state.settings.engine,
+          createdAt: Date.now()
+        });
+
+        state.loadingTranslations.delete(index);
+        state.openTranslations.add(index);
+        updateParagraphButtons(index);
+        renderTranslationSlot(index, translatedText, state.settings.engine, false);
+      } catch (err) {
+        state.loadingTranslations.delete(index);
+        if (slot) {
+          slot.innerHTML = `
+            <div class="translation-box text-xs" style="border-left-color: #f87171; color: #fca5a5;">
+              <strong>Помилка перекладу:</strong> ${escapeHtml(err.message)}
+            </div>
+          `;
+        }
+      }
+    }
+
+    function updateParagraphButtons(index) {
+      const article = document.getElementById(`para-block-${index}`);
+      if (!article) return;
+      const btn = article.querySelector('button');
+      if (!btn) return;
+      const isOpen = state.openTranslations.has(index);
+      btn.style.color = isOpen ? 'var(--text-color)' : 'var(--muted-color)';
+      btn.style.backgroundColor = isOpen ? 'var(--surface-color)' : 'transparent';
+      btn.title = isOpen ? 'Закрити переклад' : 'Перекласти абзац';
+      btn.innerHTML = isOpen
+        ? `<svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>`
+        : `<svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129"/></svg>`;
+    }
+
+    async function renderTranslationSlot(index, text = null, engine = null, fromCache = false) {
+      const slot = document.getElementById(`trans-slot-${index}`);
+      if (!slot) return;
+
+      if (!text && state.currentBook) {
+        const p = state.currentBook.paragraphs[index];
+        const cacheKey = buildCacheKey(state.currentBook.id, state.settings.sourceLang, state.settings.targetLang, p.text);
+        const cached = await dbGet('translations', cacheKey);
+        if (cached) {
+          text = cached.translatedText;
+          engine = cached.engine;
+          fromCache = true;
+        }
+      }
+
+      if (!text) return;
+
+      const tgtLabel = state.settings.targetLang.toUpperCase();
+      slot.classList.remove('hidden');
+      slot.innerHTML = `
+        <div class="translation-box">
+          <div class="flex items-center justify-between gap-2 mb-1.5 text-xs font-semibold" style="color: var(--accent-color);">
+            <div class="flex items-center gap-1.5">
+              <span>✦</span>
+              <span>Переклад (${tgtLabel})</span>
+            </div>
+            <span class="text-[11px] font-normal opacity-75" style="color: var(--muted-color);">
+              ${getEngineDisplayName(engine)}${fromCache ? ' • кеш' : ''}
+            </span>
+          </div>
+          <div class="leading-relaxed" style="color: var(--text-color); font-size: calc(var(--reader-size) * 0.94);">
+            ${escapeHtml(text)}
+          </div>
+        </div>
+      `;
+    }
+
+    function getEngineDisplayName(engine) {
+      if (engine === 'gemini') return 'Gemini';
+      if (engine === 'claude') return 'Claude';
+      return 'MyMemory';
+    }
+
+    // Допоміжна функція розбиття тексту на частини до maxLen символів (по реченнях або словах)
+    function splitTextIntoChunks(text, maxLen = 450) {
+      const clean = text.replace(/\s+/g, ' ').trim();
+      if (clean.length <= maxLen) return [clean];
+
+      const chunks = [];
+      // Розбиваємо на речення зі збереженням розділових знаків
+      const sentences = clean.match(/[^.!?…]+[.!?…]+["'»”)]*\s*|[^.!?…]+$/g) || [clean];
+      let currentChunk = '';
+
+      for (const sentence of sentences) {
+        const s = sentence.trim();
+        if (!s) continue;
+
+        if ((currentChunk + (currentChunk ? ' ' : '') + s).length <= maxLen) {
+          currentChunk += (currentChunk ? ' ' : '') + s;
+        } else {
+          if (currentChunk) {
+            chunks.push(currentChunk);
+            currentChunk = '';
+          }
+          // Якщо одне речення довше за ліміт — ділимо його по словах
+          if (s.length > maxLen) {
+            const words = s.split(/\s+/);
+            let wordChunk = '';
+            for (const w of words) {
+              if ((wordChunk + (wordChunk ? ' ' : '') + w).length <= maxLen) {
+                wordChunk += (wordChunk ? ' ' : '') + w;
+              } else {
+                if (wordChunk) chunks.push(wordChunk);
+                // На випадок одного наддовгого слова без пробілів
+                if (w.length > maxLen) {
+                  for (let i = 0; i < w.length; i += maxLen) {
+                    chunks.push(w.slice(i, i + maxLen));
+                  }
+                  wordChunk = '';
+                } else {
+                  wordChunk = w;
+                }
+              }
+            }
+            if (wordChunk) currentChunk = wordChunk;
+          } else {
+            currentChunk = s;
+          }
+        }
+      }
+
+      if (currentChunk) chunks.push(currentChunk);
+      return chunks;
+    }
+
+    async function translateWithMyMemory(text, srcLang, tgtLang) {
+      const chunks = splitTextIntoChunks(text, 450);
+      const translatedParts = [];
+
+      for (const chunk of chunks) {
+        const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(chunk)}&langpair=${encodeURIComponent(srcLang)}|${encodeURIComponent(tgtLang)}`;
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`Помилка мережі (${res.status})`);
+        const data = await res.json();
+
+        const translated = data.responseData?.translatedText || '';
+        if ((data.responseStatus && data.responseStatus !== 200) || translated.includes('QUERY LENGTH LIMIT EXCEEDED')) {
+          throw new Error(data.responseDetails || translated || 'MyMemory не зміг перекласти частину тексту');
+        }
+        translatedParts.push(translated.trim());
+      }
+
+      return translatedParts.join(' ');
+    }
+
+    function buildLiterarySystemPrompt(srcLang, tgtLang) {
+      return `Ти — професійний перекладач художньої літератури. Переклади наданий абзац з мови "${srcLang}" на мову "${tgtLang}".
+Правила:
+1. Зберігай стиль, інтонацію, ритм та художні засоби автора.
+2. Не перекладай власні імена персонажів та географічні назви, а транслітеруй/адаптуй їх згідно з традицією мови перекладу, зберігаючи однакову форму написання по всій книжці.
+3. Поверни ТІЛЬКИ готовий переклад абзацу без вступних слів, коментарів чи лапок.`;
+    }
+
+    async function requestTranslation(text, srcLang, tgtLang, prevContext) {
+      const engine = state.settings.engine;
+
+      if (engine === 'mymemory') {
+        return await translateWithMyMemory(text, srcLang, tgtLang);
+      }
+
+      if (engine === 'gemini') {
+        const key = (state.settings.geminiKey || '').trim();
+        if (!key) {
+          throw new Error('Вкажіть API-ключ Google Gemini у налаштуваннях перекладу.');
+        }
+        const sysPrompt = buildLiterarySystemPrompt(srcLang, tgtLang);
+        const userPrompt = prevContext
+          ? `Контекст попереднього абзацу (не перекладай його, використовуй лише для узгодження імен та роду): "${prevContext}"\n\nАбзац для перекладу:\n${text}`
+          : text;
+
+        const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${encodeURIComponent(key)}`;
+        const res = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            systemInstruction: { parts: [{ text: sysPrompt }] },
+            contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
+            generationConfig: { temperature: 0.3 }
+          })
+        });
+
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.error?.message || `Помилка Gemini API (${res.status})`);
+        }
+        const result = data.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (!result) throw new Error('Порожня відповідь від Gemini');
+        return result.trim();
+      }
+
+      if (engine === 'claude') {
+        const key = (state.settings.claudeKey || '').trim();
+        if (!key) {
+          throw new Error('Вкажіть API-ключ Claude у налаштуваннях перекладу.');
+        }
+        const sysPrompt = buildLiterarySystemPrompt(srcLang, tgtLang);
+        const userPrompt = prevContext
+          ? `Контекст попереднього абзацу (лише для узгодження імен та стилю, не перекладай його): "${prevContext}"\n\nАбзац для перекладу:\n${text}`
+          : text;
+
+        const res = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': key,
+            'anthropic-version': '2023-06-01',
+            'anthropic-dangerous-direct-browser-access': 'true'
+          },
+          body: JSON.stringify({
+            model: 'claude-3-5-sonnet-latest',
+            max_tokens: 1024,
+            system: sysPrompt,
+            messages: [{ role: 'user', content: userPrompt }]
+          })
+        });
+
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.error?.message || `Помилка Claude API (${res.status})`);
+        }
+        const result = data.content?.[0]?.text;
+        if (!result) throw new Error('Порожня відповідь від Claude');
+        return result.trim();
+      }
+    }
+
+    /* ==========================================================================
+       7. ЗМІСТ КНИЖКИ ТА ВИБІР МОВНОЇ ПАРИ
+       ========================================================================== */
+    function openTocModal() {
+      const book = state.currentBook;
+      if (!book) return;
+
+      const list = document.getElementById('toc-list');
+      const total = book.paragraphs.length || 1;
+
+      list.innerHTML = book.toc.map(item => {
+        const pct = Math.round(((item.paragraphIndex + 1) / total) * 100);
+        const isCurrent = book.currentParagraph >= item.paragraphIndex;
+        return `
+          <button onclick="jumpToParagraph(${item.paragraphIndex})" class="w-full text-left px-3 py-3 flex items-center justify-between gap-3 hover:opacity-80">
+            <span class="text-sm font-medium truncate" style="color: ${isCurrent ? 'var(--accent-color)' : 'var(--text-color)'};">
+              ${escapeHtml(item.title)}
+            </span>
+            <span class="text-xs shrink-0" style="color: var(--muted-color);">${pct}%</span>
+          </button>
+        `;
+      }).join('');
+
+      document.getElementById('toc-modal').classList.remove('hidden');
+    }
+
+    function jumpToParagraph(index) {
+      hideModal('toc-modal');
+      const targetEl = document.getElementById(`para-block-${index}`);
+      if (targetEl) {
+        targetEl.scrollIntoView({ behavior: 'auto', block: 'start' });
+        window.scrollBy(0, -95);
+        if (state.currentBook) {
+          state.currentBook.currentParagraph = index;
+          updateReaderProgressUI(index);
+          dbPut('books', state.currentBook);
+        }
+      }
+    }
+
+    function openLanguageModal() {
+      document.getElementById('source-lang-input').value = state.settings.sourceLang;
+      document.getElementById('target-lang-input').value = state.settings.targetLang;
+      document.getElementById('language-modal').classList.remove('hidden');
+    }
+
+    function setQuickLang(src, tgt) {
+      document.getElementById('source-lang-input').value = src;
+      document.getElementById('target-lang-input').value = tgt;
+    }
+
+    function saveLanguagePair() {
+      const src = (document.getElementById('source-lang-input').value || 'EN').trim().toUpperCase();
+      const tgt = (document.getElementById('target-lang-input').value || 'UK').trim().toUpperCase();
+      state.settings.sourceLang = src;
+      state.settings.targetLang = tgt;
+
+      if (state.currentBook) {
+        state.currentBook.sourceLang = src;
+        dbPut('books', state.currentBook);
+      }
+
+      saveSettings();
+      updateLangPairBadge();
+      hideModal('language-modal');
+
+      state.openTranslations.clear();
+      if (state.currentBook) renderReaderParagraphs();
+      showToast(`Мовна пара: ${src} → ${tgt}`);
+    }
+
+    function updateLangPairBadge() {
+      document.getElementById('active-lang-pair').textContent = `${state.settings.sourceLang} → ${state.settings.targetLang}`;
+    }
+
+    /* ==========================================================================
+       8. НАЛАШТУВАННЯ ВИГЛЯДУ, ТЕМ, ШРИФТІВ ТА ПЕРЕКЛАДУ
+       ========================================================================== */
+    async function openSettingsModal(defaultTab = 'appearance') {
+      syncSettingsUI();
+      switchSettingsTab(defaultTab);
+      const allCache = await dbGetAll('translations');
+      document.getElementById('cache-count-badge').textContent = `${allCache.length} записів`;
+
+      const lastBackupEl = document.getElementById('last-backup-info');
+      if (state.settings.lastBackupTimestamp) {
+        const d = new Date(state.settings.lastBackupTimestamp);
+        lastBackupEl.textContent = `Остання копія створювалася: ${d.toLocaleString('uk-UA')}`;
+      } else {
+        lastBackupEl.textContent = 'Резервна копія ще не створювалася.';
+      }
+
+      document.getElementById('settings-modal').classList.remove('hidden');
+    }
+
+    function switchSettingsTab(tabName) {
+      ['appearance', 'translation', 'backup'].forEach(name => {
+        const panel = document.getElementById(`settings-tab-${name}`);
+        const btn = document.getElementById(`tab-btn-${name}`);
+        if (name === tabName) {
+          panel.classList.remove('hidden');
+          btn.style.borderColor = 'var(--accent-color)';
+          btn.style.color = 'var(--accent-color)';
+        } else {
+          panel.classList.add('hidden');
+          btn.style.borderColor = 'transparent';
+          btn.style.color = 'var(--muted-color)';
+        }
+      });
+    }
+
+    function syncSettingsUI() {
+      const s = state.settings;
+      document.getElementById('font-family-select').value = s.fontFamily;
+      document.getElementById('font-size-range').value = s.fontSize;
+      document.getElementById('font-size-val').textContent = `${s.fontSize}px`;
+      document.getElementById('line-height-range').value = s.lineHeight;
+      document.getElementById('line-height-val').textContent = s.lineHeight;
+      document.getElementById('margin-x-range').value = s.marginX;
+      document.getElementById('margin-x-val').textContent = `${s.marginX}px`;
+      document.getElementById('indent-range').value = s.indent;
+      document.getElementById('indent-val').textContent = `${s.indent} em`;
+      document.getElementById('hyphens-toggle').checked = s.hyphens;
+      document.getElementById('book-styles-toggle').checked = s.keepBookStyles;
+      document.getElementById('custom-bg-picker').value = s.customBg;
+      document.getElementById('custom-text-picker').value = s.customText;
+
+      document.getElementById('custom-colors-panel').classList.toggle('hidden', s.theme !== 'custom');
+
+      const leftBtn = document.getElementById('align-left-btn');
+      const justBtn = document.getElementById('align-justify-btn');
+      leftBtn.style.borderColor = s.textAlign === 'left' ? 'var(--accent-color)' : 'var(--border-color)';
+      leftBtn.style.color = s.textAlign === 'left' ? 'var(--accent-color)' : 'var(--text-color)';
+      justBtn.style.borderColor = s.textAlign === 'justify' ? 'var(--accent-color)' : 'var(--border-color)';
+      justBtn.style.color = s.textAlign === 'justify' ? 'var(--accent-color)' : 'var(--text-color)';
+
+      const radio = document.querySelector(`input[name="engine"][value="${s.engine}"]`);
+      if (radio) radio.checked = true;
+      document.getElementById('gemini-api-key').value = s.geminiKey || '';
+      document.getElementById('claude-api-key').value = s.claudeKey || '';
+      document.getElementById('gemini-key-box').classList.toggle('hidden', s.engine !== 'gemini');
+      document.getElementById('claude-key-box').classList.toggle('hidden', s.engine !== 'claude');
+    }
+
+    function setTheme(themeName) {
+      state.settings.theme = themeName;
+      document.getElementById('custom-colors-panel').classList.toggle('hidden', themeName !== 'custom');
+      applyThemeAndTypography();
+      saveSettings();
+    }
+
+    function updateCustomColors() {
+      state.settings.customBg = document.getElementById('custom-bg-picker').value;
+      state.settings.customText = document.getElementById('custom-text-picker').value;
+      applyThemeAndTypography();
+      saveSettings();
+    }
+
+    function setTextAlign(align) {
+      state.settings.textAlign = align;
+      syncSettingsUI();
+      applyThemeAndTypography();
+      saveSettings();
+    }
+
+    function updateTypography() {
+      const s = state.settings;
+      s.fontFamily = document.getElementById('font-family-select').value;
+      s.fontSize = parseInt(document.getElementById('font-size-range').value, 10);
+      s.lineHeight = parseFloat(document.getElementById('line-height-range').value);
+      s.marginX = parseInt(document.getElementById('margin-x-range').value, 10);
+      s.indent = parseFloat(document.getElementById('indent-range').value);
+      s.hyphens = document.getElementById('hyphens-toggle').checked;
+      s.keepBookStyles = document.getElementById('book-styles-toggle').checked;
+
+      document.getElementById('font-size-val').textContent = `${s.fontSize}px`;
+      document.getElementById('line-height-val').textContent = s.lineHeight;
+      document.getElementById('margin-x-val').textContent = `${s.marginX}px`;
+      document.getElementById('indent-val').textContent = `${s.indent} em`;
+
+      applyThemeAndTypography();
+      saveSettings();
+    }
+
+    function applyThemeAndTypography() {
+      const root = document.documentElement;
+      const s = state.settings;
+
+      const themes = {
+        light: {
+          bg: '#f8fafc', surface: '#ffffff', border: '#e2e8f0',
+          text: '#0f172a', muted: '#64748b', accent: '#0284c7',
+          accentBg: 'rgba(2, 132, 199, 0.1)', transBg: '#f1f5f9'
+        },
+        sepia: {
+          bg: '#f4ecd8', surface: '#ebe0c7', border: '#d5c6a5',
+          text: '#3c2f21', muted: '#786550', accent: '#9a5b13',
+          accentBg: 'rgba(154, 91, 19, 0.12)', transBg: '#e6d8ba'
+        },
+        dark: {
+          bg: '#0e1420', surface: '#161f30', border: '#26334d',
+          text: '#e2e8f0', muted: '#94a3b8', accent: '#38bdf8',
+          accentBg: 'rgba(56, 189, 248, 0.12)', transBg: '#152033'
+        },
+        black: {
+          bg: '#000000', surface: '#0d0d0d', border: '#222222',
+          text: '#d4d4d4', muted: '#737373', accent: '#38bdf8',
+          accentBg: 'rgba(56, 189, 248, 0.12)', transBg: '#111111'
+        }
+      };
+
+      if (s.theme === 'custom') {
+        root.style.setProperty('--bg-color', s.customBg);
+        root.style.setProperty('--surface-color', s.customBg);
+        root.style.setProperty('--border-color', 'rgba(128,128,128,0.35)');
+        root.style.setProperty('--text-color', s.customText);
+        root.style.setProperty('--muted-color', s.customText);
+        root.style.setProperty('--accent-color', '#38bdf8');
+        root.style.setProperty('--accent-bg', 'rgba(56, 189, 248, 0.15)');
+        root.style.setProperty('--trans-bg', 'rgba(128,128,128,0.12)');
+      } else {
+        const t = themes[s.theme] || themes.dark;
+        root.style.setProperty('--bg-color', t.bg);
+        root.style.setProperty('--surface-color', t.surface);
+        root.style.setProperty('--border-color', t.border);
+        root.style.setProperty('--text-color', t.text);
+        root.style.setProperty('--muted-color', t.muted);
+        root.style.setProperty('--accent-color', t.accent);
+        root.style.setProperty('--accent-bg', t.accentBg);
+        root.style.setProperty('--trans-bg', t.transBg);
+      }
+
+      root.style.setProperty('--reader-font', s.fontFamily);
+      root.style.setProperty('--reader-size', `${s.fontSize}px`);
+      root.style.setProperty('--reader-line-height', s.lineHeight);
+      root.style.setProperty('--reader-padding-x', `${s.marginX}px`);
+      root.style.setProperty('--reader-align', s.textAlign);
+      root.style.setProperty('--reader-indent', `${s.indent}em`);
+      root.style.setProperty('--reader-hyphens', s.hyphens ? 'auto' : 'none');
+
+      const readerArea = document.getElementById('reader-scroll-area');
+      if (s.keepBookStyles) {
+        readerArea.classList.remove('ignore-book-styles');
+      } else {
+        readerArea.classList.add('ignore-book-styles');
+      }
+    }
+
+    function saveEngineSettings() {
+      const selected = document.querySelector('input[name="engine"]:checked');
+      if (selected) state.settings.engine = selected.value;
+      state.settings.geminiKey = document.getElementById('gemini-api-key').value;
+      state.settings.claudeKey = document.getElementById('claude-api-key').value;
+
+      document.getElementById('gemini-key-box').classList.toggle('hidden', state.settings.engine !== 'gemini');
+      document.getElementById('claude-key-box').classList.toggle('hidden', state.settings.engine !== 'claude');
+
+      saveSettings();
+    }
+
+    function saveSettings() {
+      dbPut('meta', { id: 'settings', data: state.settings });
+    }
+
+    /* ==========================================================================
+       9. РЕЗЕРВНЕ КОПІЮВАННЯ ТА ВІДНОВЛЕННЯ (ПРОГРЕС І КЕШ ОКРЕМО)
+       ========================================================================== */
+    function downloadJsonFile(filename, payload) {
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+
+    async function exportProgressBackup() {
+      const settingsCopy = { ...state.settings };
+      const payload = {
+        backupType: 'tap-reader-progress',
+        exportedAt: new Date().toISOString(),
+        settings: settingsCopy,
+        booksProgress: state.books.map(b => ({
+          id: b.id,
+          title: b.title,
+          currentParagraph: b.currentParagraph,
+          lastReadAt: b.lastReadAt,
+          sourceLang: b.sourceLang
+        }))
+      };
+
+      const dateTag = new Date().toISOString().slice(0, 10);
+      downloadJsonFile(`reader-progress-${dateTag}.json`, payload);
+
+      state.settings.lastBackupTimestamp = Date.now();
+      saveSettings();
+      checkBackupReminder();
+      showToast('Файл прогресу й налаштувань збережено');
+    }
+
+    async function saveCurrentAndExportProgress() {
+      if (state.currentBook) {
+        state.currentBook.lastReadAt = Date.now();
+        await dbPut('books', state.currentBook);
+      }
+      await exportProgressBackup();
+    }
+
+    async function exportCacheBackup() {
+      const allTranslations = await dbGetAll('translations');
+      const payload = {
+        backupType: 'tap-reader-cache',
+        exportedAt: new Date().toISOString(),
+        count: allTranslations.length,
+        entries: allTranslations
+      };
+
+      const dateTag = new Date().toISOString().slice(0, 10);
+      downloadJsonFile(`reader-translations-${dateTag}.json`, payload);
+
+      state.settings.lastBackupTimestamp = Date.now();
+      saveSettings();
+      checkBackupReminder();
+      showToast(`Кеш перекладів збережено (${allTranslations.length} записів)`);
+    }
+
+    function handleRestoreBackup(event) {
+      const input = event.target;
+      const file = input.files && input.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        try {
+          const parsed = JSON.parse(e.target.result);
+
+          if (parsed.backupType === 'tap-reader-progress') {
+            if (parsed.settings) {
+              state.settings = { ...state.settings, ...parsed.settings };
+              applyThemeAndTypography();
+              syncSettingsUI();
+              saveSettings();
+            }
+            if (Array.isArray(parsed.booksProgress)) {
+              for (const prog of parsed.booksProgress) {
+                const existing = state.books.find(b => b.id === prog.id || b.title === prog.title);
+                if (existing) {
+                  existing.currentParagraph = prog.currentParagraph || 0;
+                  existing.lastReadAt = prog.lastReadAt || existing.lastReadAt;
+                  if (prog.sourceLang) existing.sourceLang = prog.sourceLang;
+                  await dbPut('books', existing);
+                }
+              }
+              renderLibrary();
+            }
+            showToast('Прогрес та налаштування успішно відновлено');
+          } else if (parsed.backupType === 'tap-reader-cache' && Array.isArray(parsed.entries)) {
+            for (const entry of parsed.entries) {
+              if (entry && entry.key && entry.translatedText) {
+                await dbPut('translations', entry);
+              }
+            }
+            const allCache = await dbGetAll('translations');
+            document.getElementById('cache-count-badge').textContent = `${allCache.length} записів`;
+            showToast(`Відновлено ${parsed.entries.length} записів кешу перекладів`);
+          } else {
+            throw new Error('Невідомий формат файлу резервної копії.');
+          }
+        } catch (err) {
+          showToast(err.message || 'Помилка читання файлу копії.');
+        } finally {
+          input.value = '';
+        }
+      };
+      reader.readAsText(file);
+    }
+
+    function checkBackupReminder() {
+      const banner = document.getElementById('backup-reminder-banner');
+      if (!banner) return;
+
+      const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
+      const now = Date.now();
+      const lastBackup = state.settings.lastBackupTimestamp || 0;
+      const dismissed = state.settings.reminderDismissedAt || 0;
+
+      const hasData = state.books.some(b => b.currentParagraph > 0);
+      const needsBackup = hasData && (now - lastBackup > sevenDaysMs) && (now - dismissed > sevenDaysMs);
+
+      banner.classList.toggle('hidden', !needsBackup);
+    }
+
+    function dismissBackupReminder() {
+      state.settings.reminderDismissedAt = Date.now();
+      saveSettings();
+      document.getElementById('backup-reminder-banner').classList.add('hidden');
+    }
+
+    /* ==========================================================================
+       10. ДОПОМІЖНІ ФУНКЦІЇ UI ТА ІНІЦІАЛІЗАЦІЯ
+       ========================================================================== */
+    function hideModal(id) {
+      const el = document.getElementById(id);
+      if (el) el.classList.add('hidden');
+    }
+
+    function closeModalOnBackdrop(event, id) {
+      if (event.target.id === id) {
+        hideModal(id);
+      }
+    }
+
+    function showToast(message) {
+      const toast = document.getElementById('toast-message');
+      if (!toast) return;
+      toast.textContent = message;
+      toast.classList.remove('hidden');
+      clearTimeout(toastTimeout);
+      toastTimeout = setTimeout(() => {
+        toast.classList.add('hidden');
+      }, 3600);
+    }
+
+    async function initApp() {
+      try {
+        await openDatabase();
+
+        const savedMeta = await dbGet('meta', 'settings');
+        if (savedMeta && savedMeta.data) {
+          state.settings = { ...state.settings, ...savedMeta.data };
+        }
+
+        applyThemeAndTypography();
+
+        const books = await dbGetAll('books');
+        const initializedFlag = await dbGet('meta', 'initialized');
+
+        if (books.length === 0 && !initializedFlag) {
+          const demo = createDemoBook();
+          await dbPut('books', demo);
+          await dbPut('meta', { id: 'initialized', value: true });
+          state.books = [demo];
+        } else {
+          state.books = books.sort((a, b) => (b.lastReadAt || b.addedAt || 0) - (a.lastReadAt || a.addedAt || 0));
+        }
+
+        renderLibrary();
+        checkBackupReminder();
+      } catch (err) {
+        console.error('Помилка ініціалізації:', err);
+        showToast(err.message || 'Помилка запуску локального сховища.');
+      }
+    }
+
+    window.addEventListener('DOMContentLoaded', initApp);
+  </script>
+</body>
+</html>
+
