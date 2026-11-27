@@ -474,6 +474,10 @@
             <label class="block text-xs font-semibold">API-ключ Google Gemini</label>
             <input id="gemini-api-key" type="password" placeholder="AIzaSy..." oninput="saveEngineSettings()" class="w-full px-3 py-2 rounded-lg border text-xs outline-none" style="background-color: var(--surface-color); border-color: var(--border-color); color: var(--text-color);" />
             <p class="text-[11px]" style="color: var(--muted-color);">Ключ зберігається локально у вашому браузері та нікуди не передається, окрім запитів до API Google.</p>
+            <label class="block text-xs font-semibold">Модель Gemini</label>
+            <select id="gemini-model" onchange="saveEngineSettings()" class="w-full px-3 py-2 rounded-lg border text-xs outline-none" style="background-color: var(--surface-color); border-color: var(--border-color); color: var(--text-color);"></select>
+            <button type="button" onclick="refreshGeminiModels()" class="w-full px-3 py-2 rounded-lg border text-xs font-semibold" style="background-color: var(--surface-color); border-color: var(--border-color); color: var(--accent-color);">Оновити список моделей за ключем</button>
+            <p id="gemini-models-status" class="text-[11px]" style="color: var(--muted-color);">Список підтягується з вашого ключа. Якщо Google вимкне модель або вичерпається її денний ліміт, оберіть іншу.</p>
           </div>
 
           <div id="claude-key-box" class="hidden p-3.5 rounded-xl border space-y-2" style="background-color: var(--bg-color); border-color: var(--border-color);">
@@ -552,6 +556,8 @@
         targetLang: 'UK',
         engine: 'mymemory',
         geminiKey: '',
+        geminiModel: 'gemini-3.8-flash',
+        geminiModels: [],
         claudeKey: '',
         lastBackupTimestamp: 0,
         reminderDismissedAt: 0
@@ -805,7 +811,7 @@
         const newBook = {
           id: 'book_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
           title: parsed.title || stripExtension(file.name),
-          sourceLang: normalizeLangCode(parsed.lang, state.settings.sourceLang || 'EN'),
+          sourceLang: (parsed.lang || state.settings.sourceLang || 'EN').toUpperCase().slice(0, 2),
           addedAt: Date.now(),
           lastReadAt: null,
           currentParagraph: 0,
@@ -1335,21 +1341,6 @@
     /* ==========================================================================
        6. ПЕРЕКЛАД ПО ТАПУ ТА КЕШУВАННЯ (MYMEMORY, GEMINI, CLAUDE)
        ========================================================================== */
-    const LANG3_TO_2 = {
-      eng: 'EN', ukr: 'UK', rus: 'RU', bel: 'BE', pol: 'PL', ces: 'CS', cze: 'CS', slk: 'SK', slo: 'SK',
-      deu: 'DE', ger: 'DE', fra: 'FR', fre: 'FR', spa: 'ES', por: 'PT', ita: 'IT', nld: 'NL', dut: 'NL',
-      swe: 'SV', nor: 'NO', dan: 'DA', fin: 'FI', hun: 'HU', ron: 'RO', rum: 'RO', bul: 'BG', srp: 'SR',
-      hrv: 'HR', slv: 'SL', ell: 'EL', gre: 'EL', tur: 'TR', heb: 'HE', ara: 'AR', hin: 'HI',
-      zho: 'ZH', chi: 'ZH', jpn: 'JA', kor: 'KO', lat: 'LA', lit: 'LT', lav: 'LV', est: 'ET'
-    };
-
-    function normalizeLangCode(raw, fallback) {
-      const base = String(raw || '').trim().toLowerCase().split(/[-_]/)[0];
-      if (/^[a-z]{2}$/.test(base)) return base.toUpperCase();
-      if (LANG3_TO_2[base]) return LANG3_TO_2[base];
-      return String(fallback || 'EN').toUpperCase().slice(0, 2);
-    }
-
     function buildCacheKey(bookId, src, tgt, text) {
       return `${bookId}::${src.toUpperCase()}->${tgt.toUpperCase()}::${text.trim()}`;
     }
@@ -1580,7 +1571,8 @@
           ? `Контекст попереднього абзацу (не перекладай його, використовуй лише для узгодження імен та роду): "${prevContext}"\n\nАбзац для перекладу:\n${text}`
           : text;
 
-        const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent`;
+        const geminiModel = (state.settings.geminiModel || '').trim().replace(/^models\//, '') || 'gemini-3.8-flash';
+        const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(geminiModel)}:generateContent`;
         const res = await fetch(endpoint, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
@@ -1775,6 +1767,10 @@
       const radio = document.querySelector(`input[name="engine"][value="${s.engine}"]`);
       if (radio) radio.checked = true;
       document.getElementById('gemini-api-key').value = s.geminiKey || '';
+      populateGeminiModelSelect();
+      if (s.engine === 'gemini' && (s.geminiKey || '').trim() && !(s.geminiModels && s.geminiModels.length)) {
+        refreshGeminiModels();
+      }
       document.getElementById('claude-api-key').value = s.claudeKey || '';
       document.getElementById('gemini-key-box').classList.toggle('hidden', s.engine !== 'gemini');
       document.getElementById('claude-key-box').classList.toggle('hidden', s.engine !== 'claude');
@@ -1884,10 +1880,59 @@
       }
     }
 
+    function populateGeminiModelSelect() {
+      const sel = document.getElementById('gemini-model');
+      const cur = (state.settings.geminiModel || '').trim() || 'gemini-3.8-flash';
+      const list = Array.isArray(state.settings.geminiModels) ? state.settings.geminiModels.slice() : [];
+      if (!list.some(m => m.id === cur)) list.unshift({ id: cur, name: cur });
+      sel.innerHTML = '';
+      list.forEach(m => {
+        const o = document.createElement('option');
+        o.value = m.id;
+        o.textContent = m.name && m.name !== m.id ? `${m.name} (${m.id})` : m.id;
+        sel.appendChild(o);
+      });
+      sel.value = cur;
+    }
+
+    async function refreshGeminiModels() {
+      const status = document.getElementById('gemini-models-status');
+      const key = (state.settings.geminiKey || '').trim();
+      if (!key) { status.textContent = 'Спочатку вкажіть API-ключ Gemini.'; return; }
+      status.textContent = 'Завантажую список моделей…';
+      try {
+        let models = [];
+        let pageToken = '';
+        do {
+          const url = 'https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000' + (pageToken ? '&pageToken=' + encodeURIComponent(pageToken) : '');
+          const res = await fetch(url, { headers: { 'x-goog-api-key': key } });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error?.message || `Помилка Gemini API (${res.status})`);
+          models = models.concat(data.models || []);
+          pageToken = data.nextPageToken || '';
+        } while (pageToken);
+
+        const list = models
+          .filter(m => (m.supportedGenerationMethods || []).includes('generateContent'))
+          .map(m => ({ id: (m.name || '').replace(/^models\//, ''), name: m.displayName || '' }))
+          .filter(m => /^gemini-/.test(m.id) && !/(tts|image|live|audio|embedding|robotics|computer-use)/.test(m.id))
+          .sort((a, b) => a.id.localeCompare(b.id));
+
+        if (!list.length) throw new Error('Для цього ключа не знайдено підходящих моделей.');
+        state.settings.geminiModels = list;
+        saveSettings();
+        populateGeminiModelSelect();
+        status.textContent = `Знайдено моделей: ${list.length}. Ліміти кожної — на aistudio.google.com/rate-limit.`;
+      } catch (e) {
+        status.textContent = 'Не вдалося отримати список: ' + e.message;
+      }
+    }
+
     function saveEngineSettings() {
       const selected = document.querySelector('input[name="engine"]:checked');
       if (selected) state.settings.engine = selected.value;
       state.settings.geminiKey = document.getElementById('gemini-api-key').value;
+      state.settings.geminiModel = document.getElementById('gemini-model').value.trim();
       state.settings.claudeKey = document.getElementById('claude-api-key').value;
 
       document.getElementById('gemini-key-box').classList.toggle('hidden', state.settings.engine !== 'gemini');
